@@ -3,15 +3,10 @@
     'conditions': [
       ['OS != "win"', {
         'defines': [
-          '_LARGEFILE_SOURCE',
-          '_FILE_OFFSET_BITS=64',
           '_GNU_SOURCE',
           'EIO_STACKSIZE=262144'
         ],
         'conditions': [
-          ['OS=="mac"', {
-            'defines': ['__DARWIN_64_BIT_INO_T=1'],
-          }],
           ['OS=="solaris"', {
             'cflags': ['-pthreads'],
             'ldlags': ['-pthreads'],
@@ -142,13 +137,13 @@
             'src/win/internal.h',
             'src/win/loop-watcher.c',
             'src/win/pipe.c',
+            'src/win/thread.c',
             'src/win/process.c',
             'src/win/req.c',
             'src/win/stream.c',
             'src/win/tcp.c',
             'src/win/tty.c',
             'src/win/threadpool.c',
-            'src/win/threads.c',
             'src/win/timer.c',
             'src/win/udp.c',
             'src/win/util.c',
@@ -188,6 +183,7 @@
             'src/unix/cares.c',
             'src/unix/dl.c',
             'src/unix/error.c',
+            'src/unix/thread.c',
             'src/unix/process.c',
             'src/unix/internal.h',
             'src/unix/eio/ecb.h',
@@ -314,6 +310,7 @@
         'test/test-tcp-write-to-half-open-connection.c',
         'test/test-tcp-writealot.c',
         'test/test-threadpool.c',
+        'test/test-mutexes.c',
         'test/test-timer-again.c',
         'test/test-timer.c',
         'test/test-tty.c',
