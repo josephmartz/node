@@ -20,7 +20,6 @@ d8
 d8_g
 shell
 shell_g
-/.svn
 /build/gyp
 /obj/
 /out/
@@ -35,3 +34,4 @@ shell_g
 /xcodebuild/
 TAGS
 *.Makefile
+/.svn/
