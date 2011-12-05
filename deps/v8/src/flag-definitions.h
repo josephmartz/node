@@ -102,7 +102,7 @@ DEFINE_bool(harmony_scoping, false, "enable harmony block scoping")
 DEFINE_bool(harmony_proxies, false, "enable harmony proxies")
 DEFINE_bool(harmony_collections, false,
             "enable harmony collections (sets, maps, and weak maps)")
-DEFINE_bool(harmony, true, "enable all harmony features")
+DEFINE_bool(harmony, false, "enable all harmony features")
 
 // Flags for experimental implementation features.
 DEFINE_bool(unbox_double_arrays, true, "automatically unbox arrays of doubles")

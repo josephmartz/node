@@ -4174,20 +4174,99 @@ void LCodeGen::DoArrayLiteral(LArrayLiteral* instr) {
 }
 
 
-void LCodeGen::DoObjectLiteral(LObjectLiteral* instr) {
+void LCodeGen::EmitDeepCopy(Handle<JSObject> object,
+                            Register result,
+                            Register source,
+                            int* offset) {
+  ASSERT(!source.is(a2));
+  ASSERT(!result.is(a2));
+
+  // Increase the offset so that subsequent objects end up right after
+  // this one.
+  int current_offset = *offset;
+  int size = object->map()->instance_size();
+  *offset += size;
+
+  // Copy object header.
+  ASSERT(object->properties()->length() == 0);
+  ASSERT(object->elements()->length() == 0 ||
+         object->elements()->map() == isolate()->heap()->fixed_cow_array_map());
+  int inobject_properties = object->map()->inobject_properties();
+  int header_size = size - inobject_properties * kPointerSize;
+  for (int i = 0; i < header_size; i += kPointerSize) {
+    __ lw(a2, FieldMemOperand(source, i));
+    __ sw(a2, FieldMemOperand(result, current_offset + i));
+  }
+
+  // Copy in-object properties.
+  for (int i = 0; i < inobject_properties; i++) {
+    int total_offset = current_offset + object->GetInObjectPropertyOffset(i);
+    Handle<Object> value = Handle<Object>(object->InObjectPropertyAt(i));
+    if (value->IsJSObject()) {
+      Handle<JSObject> value_object = Handle<JSObject>::cast(value);
+      __ Addu(a2, result, Operand(*offset));
+      __ sw(a2, FieldMemOperand(result, total_offset));
+      LoadHeapObject(source, value_object);
+      EmitDeepCopy(value_object, result, source, offset);
+    } else if (value->IsHeapObject()) {
+      LoadHeapObject(a2, Handle<HeapObject>::cast(value));
+      __ sw(a2, FieldMemOperand(result, total_offset));
+    } else {
+      __ li(a2, Operand(value));
+      __ sw(a2, FieldMemOperand(result, total_offset));
+    }
+  }
+}
+
+
+void LCodeGen::DoObjectLiteralFast(LObjectLiteralFast* instr) {
+  int size = instr->hydrogen()->total_size();
+
+  // Allocate all objects that are part of the literal in one big
+  // allocation. This avoids multiple limit checks.
+  Label allocated, runtime_allocate;
+  __ AllocateInNewSpace(size, v0, a2, a3, &runtime_allocate, TAG_OBJECT);
+  __ jmp(&allocated);
+
+  __ bind(&runtime_allocate);
+  __ li(a0, Operand(Smi::FromInt(size)));
+  __ push(a0);
+  CallRuntime(Runtime::kAllocateInNewSpace, 1, instr);
+
+  __ bind(&allocated);
+  int offset = 0;
+  LoadHeapObject(a1, instr->hydrogen()->boilerplate());
+  EmitDeepCopy(instr->hydrogen()->boilerplate(), v0, a1, &offset);
+  ASSERT_EQ(size, offset);
+}
+
+
+void LCodeGen::DoObjectLiteralGeneric(LObjectLiteralGeneric* instr) {
   ASSERT(ToRegister(instr->result()).is(v0));
+
+  Handle<FixedArray> constant_properties =
+      instr->hydrogen()->constant_properties();
+
   __ lw(t0, MemOperand(fp, JavaScriptFrameConstants::kFunctionOffset));
   __ lw(t0, FieldMemOperand(t0, JSFunction::kLiteralsOffset));
   __ li(a3, Operand(Smi::FromInt(instr->hydrogen()->literal_index())));
-  __ li(a2, Operand(instr->hydrogen()->constant_properties()));
-  __ li(a1, Operand(Smi::FromInt(instr->hydrogen()->fast_elements() ? 1 : 0)));
+  __ li(a2, Operand(constant_properties));
+  int flags = instr->hydrogen()->fast_elements()
+      ? ObjectLiteral::kFastElements
+      : ObjectLiteral::kNoFlags;
+  __ li(a1, Operand(Smi::FromInt(flags)));
   __ Push(t0, a3, a2, a1);
 
   // Pick the right runtime function to call.
+  int properties_count = constant_properties->length() / 2;
   if (instr->hydrogen()->depth() > 1) {
     CallRuntime(Runtime::kCreateObjectLiteral, 4, instr);
-  } else {
+  } else if (flags != ObjectLiteral::kFastElements ||
+      properties_count > FastCloneShallowObjectStub::kMaximumClonedProperties) {
     CallRuntime(Runtime::kCreateObjectLiteralShallow, 4, instr);
+  } else {
+    FastCloneShallowObjectStub stub(properties_count);
+    CallCode(stub.GetCode(), RelocInfo::CODE_TARGET, instr);
   }
 }
 
